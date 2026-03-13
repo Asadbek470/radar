@@ -1,267 +1,732 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<title>Military Radar System</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Radar 2.0 Vision + Bluetooth</title>
 
-<style>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
-body{
-background:#000;
-color:#00ff9c;
-font-family:Consolas,monospace;
-text-align:center;
-margin:0;
-}
+  <style>
+    :root{
+      --bg:#030607;
+      --panel:#071215;
+      --grid:#0f2a2a;
+      --green:#56ff9d;
+      --green-soft:rgba(86,255,157,0.18);
+      --red:#ff4b4b;
+      --yellow:#ffd24d;
+      --text:#d9ffe8;
+    }
 
-h1{
-margin-top:10px;
-}
+    *{box-sizing:border-box}
 
-#radar{
-background:#020902;
-border-radius:50%;
-box-shadow:0 0 50px #00ff88;
-display:block;
-margin:auto;
-}
+    body{
+      margin:0;
+      background:radial-gradient(circle at center, #061012 0%, #030607 60%, #010203 100%);
+      color:var(--text);
+      font-family:Consolas, monospace;
+    }
 
-button{
-margin:10px;
-padding:10px 20px;
-background:#011d0f;
-border:1px solid #00ff9c;
-color:#00ff9c;
-border-radius:10px;
-cursor:pointer;
-}
+    .wrap{
+      max-width:1400px;
+      margin:0 auto;
+      padding:18px;
+    }
 
-#panel{
-width:420px;
-margin:auto;
-margin-top:10px;
-background:#021006;
-border:1px solid #00ff9c;
-padding:10px;
-border-radius:10px;
-}
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:14px;
+      flex-wrap:wrap;
+    }
 
-.alert{
-color:red;
-}
+    .title{
+      font-size:24px;
+      color:var(--green);
+      text-shadow:0 0 10px rgba(86,255,157,0.45);
+    }
 
-</style>
+    .status-badges{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .badge{
+      padding:8px 12px;
+      border:1px solid var(--green);
+      border-radius:999px;
+      background:rgba(86,255,157,0.08);
+      color:var(--green);
+      font-size:13px;
+    }
+
+    .badge.alert{
+      border-color:var(--red);
+      color:#fff;
+      background:rgba(255,75,75,0.22);
+      box-shadow:0 0 16px rgba(255,75,75,0.35);
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap:16px;
+    }
+
+    @media (max-width: 1050px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    .panel{
+      background:linear-gradient(180deg, rgba(7,18,21,0.9), rgba(4,10,12,0.92));
+      border:1px solid rgba(86,255,157,0.28);
+      border-radius:18px;
+      padding:14px;
+      box-shadow:0 0 30px rgba(86,255,157,0.08);
+      position:relative;
+      overflow:hidden;
+    }
+
+    .panel::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(rgba(86,255,157,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(86,255,157,0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events:none;
+    }
+
+    .panel h2{
+      margin:0 0 12px;
+      color:var(--green);
+      font-size:18px;
+    }
+
+    .video-wrap{
+      position:relative;
+      width:100%;
+      aspect-ratio:16/9;
+      background:#000;
+      border-radius:16px;
+      overflow:hidden;
+      border:1px solid rgba(86,255,157,0.22);
+    }
+
+    video, canvas.overlay{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+
+    .controls{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:12px;
+    }
+
+    button{
+      background:#0c1c1f;
+      color:var(--green);
+      border:1px solid rgba(86,255,157,0.35);
+      border-radius:12px;
+      padding:12px 14px;
+      cursor:pointer;
+      font-family:inherit;
+      font-size:14px;
+      min-width:150px;
+    }
+
+    button:hover{
+      background:#10272b;
+    }
+
+    .radar-box{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:10px 0 6px;
+    }
+
+    #radar{
+      width:min(100%, 540px);
+      aspect-ratio:1/1;
+      border-radius:50%;
+      background:
+        radial-gradient(circle at center, rgba(86,255,157,0.10) 0%, rgba(86,255,157,0.03) 36%, rgba(0,0,0,0.45) 72%),
+        #020908;
+      box-shadow:
+        0 0 30px rgba(86,255,157,0.12),
+        inset 0 0 40px rgba(86,255,157,0.08);
+      border:1px solid rgba(86,255,157,0.25);
+    }
+
+    .lists{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin-top:12px;
+    }
+
+    @media (max-width: 700px){
+      .lists{grid-template-columns:1fr}
+    }
+
+    .list{
+      background:rgba(0,0,0,0.22);
+      border:1px solid rgba(86,255,157,0.18);
+      border-radius:14px;
+      padding:12px;
+      min-height:180px;
+    }
+
+    .list h3{
+      margin:0 0 10px;
+      font-size:15px;
+      color:var(--green);
+    }
+
+    .item{
+      padding:8px 10px;
+      margin-bottom:8px;
+      border-radius:10px;
+      background:rgba(86,255,157,0.06);
+      border:1px solid rgba(86,255,157,0.12);
+      font-size:13px;
+      line-height:1.45;
+    }
+
+    .danger{
+      color:#fff;
+      background:rgba(255,75,75,0.18);
+      border-color:rgba(255,75,75,0.28);
+    }
+
+    .small{
+      font-size:12px;
+      opacity:0.82;
+      line-height:1.5;
+      margin-top:10px;
+    }
+
+    .flash{
+      animation: flashRed 0.7s infinite;
+    }
+
+    @keyframes flashRed{
+      0%, 100% { box-shadow:0 0 20px rgba(255,75,75,0.18), inset 0 0 0 rgba(255,75,75,0.0);}
+      50% { box-shadow:0 0 36px rgba(255,75,75,0.45), inset 0 0 24px rgba(255,75,75,0.12);}
+    }
+
+    .legend{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      font-size:12px;
+      opacity:0.9;
+      margin-top:10px;
+    }
+
+    .dot{
+      display:inline-block;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      margin-right:6px;
+      vertical-align:middle;
+    }
+
+    .g{ background:#56ff9d; }
+    .r{ background:#ff4b4b; }
+    .y{ background:#ffd24d; }
+  </style>
 </head>
-
 <body>
-
-<h1>Radar Detection System</h1>
-
-<canvas id="radar" width="520" height="520"></canvas>
-
-<br>
-
-<button onclick="scan()">SCAN DEVICE</button>
-<button onclick="toggleNight()">Night Mode</button>
-
-<div id="panel">Нет целей</div>
-
-<script>
-
-const canvas=document.getElementById("radar");
-const ctx=canvas.getContext("2d");
-
-let angle=0;
-let targets=[];
-let pulse=0;
-let night=true;
-
-function drawRadar(){
-
-ctx.clearRect(0,0,520,520);
-
-ctx.strokeStyle=night?"#00ff9c":"red";
-ctx.lineWidth=2;
-
-for(let r=80;r<260;r+=60){
-
-ctx.beginPath();
-ctx.arc(260,260,r,0,Math.PI*2);
-ctx.stroke();
-
-}
-
-ctx.beginPath();
-ctx.moveTo(260,0);
-ctx.lineTo(260,520);
-ctx.stroke();
-
-ctx.beginPath();
-ctx.moveTo(0,260);
-ctx.lineTo(520,260);
-ctx.stroke();
-
-let sweepX=260+260*Math.cos(angle);
-let sweepY=260+260*Math.sin(angle);
-
-ctx.strokeStyle="#00ff66";
-
-ctx.beginPath();
-ctx.moveTo(260,260);
-ctx.lineTo(sweepX,sweepY);
-ctx.stroke();
-
-angle+=0.02;
-
-pulse+=0.1;
-
-targets.forEach(t=>{
-
-let size=6+Math.sin(pulse)*2;
-
-ctx.fillStyle=t.alert?"red":"#00ff9c";
-
-ctx.beginPath();
-ctx.arc(t.x,t.y,size,0,Math.PI*2);
-ctx.fill();
-
-});
-
-requestAnimationFrame(drawRadar);
-
-}
-
-drawRadar();
-
-
-function radarBeep(){
-
-let audio=new AudioContext();
-let osc=audio.createOscillator();
-
-osc.connect(audio.destination);
-
-osc.frequency.value=1000;
-
-osc.start();
-
-setTimeout(()=>osc.stop(),120);
-
-}
-
-
-async function scan(){
-
-if(!navigator.bluetooth){
-
-alert("Bluetooth не поддерживается");
-return;
-
-}
-
-try{
-
-let device=await navigator.bluetooth.requestDevice({
-acceptAllDevices:true
-});
-
-radarBeep();
-
-let distance=Math.floor(Math.random()*100);
-
-let x=260+Math.cos(Math.random()*Math.PI*2)*(distance*2);
-let y=260+Math.sin(Math.random()*Math.PI*2)*(distance*2);
-
-targets.push({
-
-x:x,
-y:y,
-name:device.name||"Unknown",
-distance:distance,
-signal:Math.floor(Math.random()*100),
-alert:false
-
-});
-
-if(targets.length>=5){
-
-targets.forEach(t=>t.alert=true);
-alarm();
-
-}
-
-updatePanel();
-
-}
-catch(e){
-
-console.log(e);
-
-}
-
-}
-
-
-function alarm(){
-
-let audio=new AudioContext();
-
-let osc=audio.createOscillator();
-
-osc.frequency.value=400;
-
-osc.connect(audio.destination);
-
-osc.start();
-
-setTimeout(()=>osc.stop(),400);
-
-}
-
-
-function updatePanel(){
-
-let html="Detected devices:<br><br>";
-
-targets.forEach((t,i)=>{
-
-html+=`
-${i+1}. ${t.name}
-<br>Distance: ${t.distance}m
-<br>Signal: ${t.signal}%
-<br><br>
-`;
-
-});
-
-if(targets.length>=5){
-
-html+="<span class='alert'>ALERT: MANY TARGETS</span>";
-
-}
-
-document.getElementById("panel").innerHTML=html;
-
-}
-
-
-function toggleNight(){
-
-night=!night;
-
-}
-
-setInterval(()=>{
-
-if(targets.length>0){
-
-scan();
-
-}
-
-},5000);
-
-</script>
-
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">RADAR 2.0 · Vision + Bluetooth HUD</div>
+      <div class="status-badges">
+        <div class="badge" id="cameraBadge">CAMERA: OFF</div>
+        <div class="badge" id="aiBadge">AI: OFF</div>
+        <div class="badge" id="btBadge">BT: IDLE</div>
+        <div class="badge" id="alertBadge">STATUS: NORMAL</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Camera feed + object detection</h2>
+        <div class="video-wrap" id="videoWrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay" class="overlay"></canvas>
+        </div>
+
+        <div class="controls">
+          <button id="startCameraBtn">Start camera</button>
+          <button id="startAiBtn">Load AI + detect</button>
+          <button id="scanBtBtn">Scan Bluetooth</button>
+          <button id="clearBtn">Clear targets</button>
+        </div>
+
+        <div class="legend">
+          <span><span class="dot g"></span>object from camera</span>
+          <span><span class="dot y"></span>bluetooth device</span>
+          <span><span class="dot r"></span>alert target</span>
+        </div>
+
+        <div class="small">
+          Камера и Bluetooth попросят разрешение. Bluetooth-сканирование в браузере ограничено и зависит от поддержки браузера и HTTPS.
+        </div>
+      </div>
+
+      <div class="panel" id="radarPanel">
+        <h2>Radar screen</h2>
+        <div class="radar-box">
+          <canvas id="radar" width="540" height="540"></canvas>
+        </div>
+
+        <div class="lists">
+          <div class="list">
+            <h3>Detected objects</h3>
+            <div id="objectList"></div>
+          </div>
+          <div class="list">
+            <h3>Bluetooth devices</h3>
+            <div id="btList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const octx = overlay.getContext("2d");
+
+    const radarCanvas = document.getElementById("radar");
+    const rctx = radarCanvas.getContext("2d");
+
+    const cameraBadge = document.getElementById("cameraBadge");
+    const aiBadge = document.getElementById("aiBadge");
+    const btBadge = document.getElementById("btBadge");
+    const alertBadge = document.getElementById("alertBadge");
+    const radarPanel = document.getElementById("radarPanel");
+
+    const objectList = document.getElementById("objectList");
+    const btList = document.getElementById("btList");
+
+    const startCameraBtn = document.getElementById("startCameraBtn");
+    const startAiBtn = document.getElementById("startAiBtn");
+    const scanBtBtn = document.getElementById("scanBtBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    let model = null;
+    let cameraStarted = false;
+    let detectLoopRunning = false;
+    let streamRef = null;
+
+    let radarAngle = 0;
+    let pulse = 0;
+
+    const radarTargets = [];
+    const objectTargets = new Map();
+    const bluetoothTargets = [];
+
+    function setBadge(el, text, alert = false) {
+      el.textContent = text;
+      el.className = "badge" + (alert ? " alert" : "");
+    }
+
+    function speakBeep(freq = 900, duration = 120, volume = 0.03, type = "sine") {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.value = volume;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        setTimeout(() => {
+          osc.stop();
+          ctx.close();
+        }, duration);
+      } catch (_) {}
+    }
+
+    function beepForThreat(level) {
+      if (level === 1) {
+        speakBeep(950, 110, 0.025, "sine");
+      } else if (level === 2) {
+        speakBeep(1200, 120, 0.035, "square");
+        setTimeout(() => speakBeep(1000, 120, 0.03, "square"), 140);
+      } else {
+        speakBeep(650, 180, 0.04, "sawtooth");
+        setTimeout(() => speakBeep(650, 180, 0.04, "sawtooth"), 220);
+        setTimeout(() => speakBeep(650, 180, 0.04, "sawtooth"), 440);
+      }
+    }
+
+    function randomRadarPoint(kind = "object") {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 70 + Math.random() * 180;
+      const x = 270 + Math.cos(angle) * radius;
+      const y = 270 + Math.sin(angle) * radius;
+      return { x, y, radius, angle, kind };
+    }
+
+    function updateAlertState() {
+      const total = objectTargets.size + bluetoothTargets.length;
+      let level = 0;
+
+      if (total >= 3) level = 3;
+      else if (total >= 2) level = 2;
+      else if (total >= 1) level = 1;
+
+      radarPanel.classList.toggle("flash", level >= 2);
+
+      if (level === 0) {
+        setBadge(alertBadge, "STATUS: NORMAL", false);
+      } else if (level === 1) {
+        setBadge(alertBadge, "STATUS: CONTACT", true);
+      } else if (level === 2) {
+        setBadge(alertBadge, "STATUS: ALERT", true);
+      } else {
+        setBadge(alertBadge, "STATUS: HIGH ALERT", true);
+      }
+    }
+
+    function addRadarTarget(label, source, danger = false) {
+      const p = randomRadarPoint(source);
+      radarTargets.push({
+        id: crypto.randomUUID(),
+        x: p.x,
+        y: p.y,
+        label,
+        source,
+        danger,
+        ttl: 300
+      });
+      updateAlertState();
+    }
+
+    function clearAll() {
+      radarTargets.length = 0;
+      objectTargets.clear();
+      bluetoothTargets.length = 0;
+      objectList.innerHTML = "";
+      btList.innerHTML = "";
+      updateAlertState();
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+    }
+
+    function renderLists() {
+      objectList.innerHTML = "";
+      btList.innerHTML = "";
+
+      if (objectTargets.size === 0) {
+        objectList.innerHTML = '<div class="item">No camera objects yet</div>';
+      } else {
+        [...objectTargets.values()].forEach(obj => {
+          const div = document.createElement("div");
+          div.className = "item" + (obj.score >= 0.75 ? " danger" : "");
+          div.innerHTML = `
+            <strong>${obj.label}</strong><br>
+            confidence: ${Math.round(obj.score * 100)}%<br>
+            status: ${obj.score >= 0.75 ? "priority contact" : "tracked"}
+          `;
+          objectList.appendChild(div);
+        });
+      }
+
+      if (bluetoothTargets.length === 0) {
+        btList.innerHTML = '<div class="item">No Bluetooth devices yet</div>';
+      } else {
+        bluetoothTargets.forEach(dev => {
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `
+            <strong>${dev.name}</strong><br>
+            id: ${dev.idShort}<br>
+            type: BLE target
+          `;
+          btList.appendChild(div);
+        });
+      }
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false
+        });
+
+        streamRef = stream;
+        video.srcObject = stream;
+        await video.play();
+
+        overlay.width = video.videoWidth || 1280;
+        overlay.height = video.videoHeight || 720;
+
+        cameraStarted = true;
+        setBadge(cameraBadge, "CAMERA: ON");
+      } catch (err) {
+        setBadge(cameraBadge, "CAMERA: ERROR", true);
+        alert("Не удалось включить камеру: " + err.message);
+      }
+    }
+
+    async function loadAIAndStart() {
+      if (!cameraStarted) {
+        alert("Сначала запусти камеру.");
+        return;
+      }
+
+      if (!model) {
+        setBadge(aiBadge, "AI: LOADING...");
+        model = await cocoSsd.load();
+      }
+
+      setBadge(aiBadge, "AI: ACTIVE");
+      if (!detectLoopRunning) {
+        detectLoopRunning = true;
+        detectFrame();
+      }
+    }
+
+    async function detectFrame() {
+      if (!model || !cameraStarted) {
+        detectLoopRunning = false;
+        return;
+      }
+
+      const predictions = await model.detect(video, 10);
+
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+
+      const seenThisFrame = new Set();
+
+      predictions
+        .filter(p => p.score >= 0.60)
+        .forEach(pred => {
+          const [x, y, w, h] = pred.bbox;
+          const score = pred.score;
+          const label = pred.class;
+
+          seenThisFrame.add(label);
+
+          octx.strokeStyle = score >= 0.75 ? "#ff4b4b" : "#56ff9d";
+          octx.lineWidth = 3;
+          octx.strokeRect(x, y, w, h);
+
+          octx.fillStyle = score >= 0.75 ? "rgba(255,75,75,0.2)" : "rgba(86,255,157,0.18)";
+          octx.fillRect(x, y, w, h);
+
+          octx.fillStyle = score >= 0.75 ? "#ff4b4b" : "#56ff9d";
+          octx.font = "16px Consolas";
+          octx.fillText(`${label} ${Math.round(score * 100)}%`, x + 6, Math.max(18, y - 8));
+
+          const existing = objectTargets.get(label);
+          if (!existing) {
+            objectTargets.set(label, { label, score });
+            addRadarTarget(label, "object", score >= 0.75);
+            beepForThreat(1);
+          } else {
+            existing.score = Math.max(existing.score, score);
+          }
+        });
+
+      for (const key of [...objectTargets.keys()]) {
+        if (!seenThisFrame.has(key)) {
+          objectTargets.delete(key);
+        }
+      }
+
+      renderLists();
+      updateAlertState();
+
+      const total = objectTargets.size + bluetoothTargets.length;
+      if (total === 1) {
+        // already handled on first contact
+      } else if (total === 2) {
+        beepForThreat(2);
+      } else if (total >= 3) {
+        beepForThreat(3);
+      }
+
+      requestAnimationFrame(detectFrame);
+    }
+
+    async function scanBluetooth() {
+      if (!("bluetooth" in navigator)) {
+        setBadge(btBadge, "BT: UNSUPPORTED", true);
+        alert("Этот браузер не поддерживает Web Bluetooth.");
+        return;
+      }
+
+      try {
+        setBadge(btBadge, "BT: SCANNING...");
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ["battery_service"]
+        });
+
+        const name = device.name || "Unknown device";
+        const idShort = (device.id || "no-id").slice(0, 8);
+
+        bluetoothTargets.push({ name, idShort });
+        addRadarTarget(name, "bluetooth", false);
+        renderLists();
+        updateAlertState();
+
+        setBadge(btBadge, "BT: DEVICE FOUND");
+        beepForThreat(bluetoothTargets.length + objectTargets.size >= 3 ? 3 : bluetoothTargets.length + objectTargets.size >= 2 ? 2 : 1);
+      } catch (err) {
+        setBadge(btBadge, "BT: IDLE");
+        console.log(err);
+      }
+    }
+
+    function drawRadar() {
+      const w = radarCanvas.width;
+      const h = radarCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      rctx.clearRect(0, 0, w, h);
+
+      const total = objectTargets.size + bluetoothTargets.length;
+      const isRed = total >= 2;
+
+      rctx.save();
+
+      // outer rings
+      for (let i = 1; i <= 4; i++) {
+        rctx.beginPath();
+        rctx.strokeStyle = isRed ? "rgba(255,75,75,0.28)" : "rgba(86,255,157,0.25)";
+        rctx.lineWidth = 1.5;
+        rctx.arc(cx, cy, i * 55, 0, Math.PI * 2);
+        rctx.stroke();
+      }
+
+      // cross lines
+      rctx.strokeStyle = isRed ? "rgba(255,75,75,0.22)" : "rgba(86,255,157,0.18)";
+      rctx.beginPath();
+      rctx.moveTo(cx, 20);
+      rctx.lineTo(cx, h - 20);
+      rctx.moveTo(20, cy);
+      rctx.lineTo(w - 20, cy);
+      rctx.stroke();
+
+      // diagonal lines
+      rctx.beginPath();
+      rctx.moveTo(70, 70);
+      rctx.lineTo(w - 70, h - 70);
+      rctx.moveTo(w - 70, 70);
+      rctx.lineTo(70, h - 70);
+      rctx.stroke();
+
+      // sweep beam
+      const beamLen = 235;
+      const bx = cx + Math.cos(radarAngle) * beamLen;
+      const by = cy + Math.sin(radarAngle) * beamLen;
+
+      const grad = rctx.createRadialGradient(cx, cy, 10, cx, cy, beamLen);
+      grad.addColorStop(0, isRed ? "rgba(255,75,75,0.28)" : "rgba(86,255,157,0.30)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      rctx.fillStyle = grad;
+
+      rctx.beginPath();
+      rctx.moveTo(cx, cy);
+      rctx.arc(cx, cy, beamLen, radarAngle - 0.16, radarAngle + 0.16);
+      rctx.closePath();
+      rctx.fill();
+
+      rctx.beginPath();
+      rctx.strokeStyle = isRed ? "rgba(255,75,75,0.72)" : "rgba(86,255,157,0.75)";
+      rctx.lineWidth = 2;
+      rctx.moveTo(cx, cy);
+      rctx.lineTo(bx, by);
+      rctx.stroke();
+
+      // pulse ring
+      pulse += 0.7;
+      const pulseR = 40 + (pulse % 190);
+      rctx.beginPath();
+      rctx.strokeStyle = isRed
+        ? `rgba(255,75,75,${0.28 - (pulseR / 900)})`
+        : `rgba(86,255,157,${0.22 - (pulseR / 1000)})`;
+      rctx.arc(cx, cy, pulseR, 0, Math.PI * 2);
+      rctx.stroke();
+
+      // targets
+      for (let i = radarTargets.length - 1; i >= 0; i--) {
+        const t = radarTargets[i];
+        t.ttl -= 1;
+
+        const size = t.source === "bluetooth" ? 6 : 5;
+        const color = t.danger ? "#ff4b4b" : (t.source === "bluetooth" ? "#ffd24d" : "#56ff9d");
+
+        rctx.beginPath();
+        rctx.fillStyle = color;
+        rctx.arc(t.x, t.y, size + Math.sin((pulse + i * 10) / 10) * 1.2, 0, Math.PI * 2);
+        rctx.fill();
+
+        rctx.fillStyle = color;
+        rctx.font = "11px Consolas";
+        rctx.fillText(t.label, t.x + 10, t.y - 8);
+
+        if (t.ttl <= 0) {
+          radarTargets.splice(i, 1);
+        }
+      }
+
+      // center point
+      rctx.beginPath();
+      rctx.fillStyle = isRed ? "#ff4b4b" : "#56ff9d";
+      rctx.arc(cx, cy, 5, 0, Math.PI * 2);
+      rctx.fill();
+
+      // HUD text
+      rctx.fillStyle = isRed ? "#ff4b4b" : "#56ff9d";
+      rctx.font = "14px Consolas";
+      rctx.fillText(`CONTACTS: ${total}`, 20, 26);
+      rctx.fillText(`CAM OBJ: ${objectTargets.size}`, 20, 46);
+      rctx.fillText(`BT DEV: ${bluetoothTargets.length}`, 20, 66);
+      if (total >= 3) {
+        rctx.fillText("HIGH ALERT", w - 120, 26);
+      } else if (total >= 2) {
+        rctx.fillText("ALERT", w - 80, 26);
+      }
+
+      rctx.restore();
+
+      radarAngle += 0.02;
+      requestAnimationFrame(drawRadar);
+    }
+
+    startCameraBtn.addEventListener("click", startCamera);
+    startAiBtn.addEventListener("click", loadAIAndStart);
+    scanBtBtn.addEventListener("click", scanBluetooth);
+    clearBtn.addEventListener("click", clearAll);
+
+    renderLists();
+    updateAlertState();
+    drawRadar();
+  </script>
 </body>
 </html>
