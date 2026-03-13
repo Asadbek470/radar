@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
 
 <meta charset="UTF-8">
-<title>AI Security Radar</title>
+<title>AI Radar Vision v4</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -17,6 +17,11 @@ font-family:monospace;
 text-align:center;
 }
 
+#container{
+position:relative;
+display:inline-block;
+}
+
 video{
 border:2px solid #00ff88;
 }
@@ -27,13 +32,12 @@ left:0;
 top:0;
 }
 
-.alert{
-color:red;
-font-size:22px;
-}
-
-.safe{
-color:#00ff88;
+#menu{
+margin-top:20px;
+padding:20px;
+border:1px solid #00ff88;
+width:700px;
+margin:auto;
 }
 
 button{
@@ -44,26 +48,36 @@ color:#00ff88;
 border:1px solid #00ff88;
 }
 
+.alert{
+color:red;
+font-size:22px;
+}
+
 </style>
 
 </head>
 
 <body>
 
-<h2>AI Camera Security System</h2>
+<h2>AI Radar Vision System</h2>
 
-<div style="position:relative;display:inline-block">
+<div id="container">
 
 <video id="video" width="640" height="480" autoplay></video>
 <canvas id="canvas" width="640" height="480"></canvas>
 
 </div>
 
-<br>
+<div id="menu">
 
-<button onclick="toggleNight()">Night Mode</button>
+<button onclick="toggleNight()">Night Vision</button>
+<button onclick="toggleThermal()">Thermal Mode</button>
+<button onclick="startRecording()">Start Recording</button>
 
-<h3 id="status">System ready</h3>
+<h3 id="peopleCount">People detected: 0</h3>
+<h3 id="status">System Ready</h3>
+
+</div>
 
 <script>
 
@@ -73,6 +87,9 @@ const ctx=canvas.getContext("2d")
 
 let model
 let night=false
+let thermal=false
+
+let people=0
 
 async function startCamera(){
 
@@ -88,7 +105,7 @@ let audio=new AudioContext()
 
 let osc=audio.createOscillator()
 
-osc.frequency.value=300
+osc.frequency.value=350
 
 osc.connect(audio.destination)
 
@@ -103,13 +120,21 @@ function toggleNight(){
 night=!night
 
 if(night){
-
-video.style.filter="brightness(1.8) contrast(1.5)"
-
+video.style.filter="brightness(1.6)"
 }else{
-
 video.style.filter="none"
+}
 
+}
+
+function toggleThermal(){
+
+thermal=!thermal
+
+if(thermal){
+video.style.filter="hue-rotate(180deg) contrast(1.8)"
+}else{
+video.style.filter="none"
 }
 
 }
@@ -128,7 +153,7 @@ const predictions=await model.detect(video)
 
 ctx.clearRect(0,0,640,480)
 
-let danger=false
+people=0
 
 predictions.forEach(p=>{
 
@@ -138,43 +163,49 @@ let w=p.bbox[2]
 let h=p.bbox[3]
 
 let label=p.class
+let score=Math.round(p.score*100)
 
-if(label==="knife"){
-
-ctx.strokeStyle="red"
-danger=true
-
-}else{
+if(label==="person"){
+people++
+}
 
 ctx.strokeStyle="#00ff88"
-
-}
 
 ctx.lineWidth=3
 
 ctx.strokeRect(x,y,w,h)
 
-ctx.fillStyle=ctx.strokeStyle
-
-ctx.fillText(label,x,y)
+ctx.fillStyle="#00ff88"
+ctx.fillText(label+" "+score+"%",x,y)
 
 })
 
-if(danger){
+document.getElementById("peopleCount").innerText="People detected: "+people
 
-document.getElementById("status").innerHTML="🚨 ALERT DANGEROUS OBJECT"
+if(people>2){
+
+document.getElementById("status").innerHTML="⚠ MULTIPLE PEOPLE DETECTED"
 document.getElementById("status").className="alert"
 
 alarm()
 
 }else{
 
-document.getElementById("status").innerHTML="Area secure"
-document.getElementById("status").className="safe"
+document.getElementById("status").innerHTML="Area Secure"
 
 }
 
 requestAnimationFrame(detect)
+
+}
+
+function startRecording(){
+
+let recorder=new MediaRecorder(video.srcObject)
+
+recorder.start()
+
+setTimeout(()=>recorder.stop(),10000)
 
 }
 
