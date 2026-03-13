@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BLE Scanner</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #07110a;
+      color: #7CFF9B;
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      width: min(92vw, 560px);
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid #1cff64;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 0 24px rgba(28, 255, 100, 0.18);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 24px;
+    }
+
+    p {
+      line-height: 1.5;
+      color: #b7ffca;
+    }
+
+    button {
+      background: #0d2a15;
+      color: #7CFF9B;
+      border: 1px solid #1cff64;
+      border-radius: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background: #12391d;
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(124, 255, 155, 0.08);
+      border: 1px solid rgba(124, 255, 155, 0.22);
+      white-space: pre-line;
+    }
+
+    .alert {
+      color: #ff6767;
+      border-color: rgba(255, 103, 103, 0.35);
+      background: rgba(255, 103, 103, 0.08);
+    }
+
+    .small {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Bluetooth Nearby Detector</h1>
+    <p>
+      Эта страница не сканирует все телефоны подряд.
+      Она может показать только BLE-устройства, к которым браузер даст доступ через окно выбора.
+    </p>
+
+    <button id="checkBtn">Проверить Bluetooth</button>
+    <button id="scanBtn">Найти устройство</button>
+
+    <div id="status" class="status">Ожидание действия...</div>
+    <p class="small">
+      Работает только в поддерживаемом браузере и обычно только по HTTPS.
+    </p>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const checkBtn = document.getElementById("checkBtn");
+    const scanBtn = document.getElementById("scanBtn");
+
+    let audioContext = null;
+
+    function setStatus(text, isAlert = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("alert", isAlert);
+    }
+
+    function beep(duration = 180, frequency = 880, volume = 0.05) {
+      try {
+        if (!audioContext) {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequency;
+        gainNode.gain.value = volume;
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.start();
+        setTimeout(() => {
+          oscillator.stop();
+        }, duration);
+      } catch (error) {
+        console.error("Не удалось воспроизвести звук:", error);
+      }
+    }
+
+    async function checkBluetooth() {
+      if (!("bluetooth" in navigator)) {
+        setStatus("Web Bluetooth не поддерживается в этом браузере.", true);
+        return;
+      }
+
+      try {
+        const available = await navigator.bluetooth.getAvailability();
+        if (available) {
+          setStatus("Bluetooth доступен. Можно пробовать искать BLE-устройство.");
+        } else {
+          setStatus("Bluetooth недоступен: он может быть выключен, заблокирован браузером или системой.", true);
+        }
+      } catch (error) {
+        setStatus("Ошибка проверки Bluetooth:\n" + error.message, true);
+      }
+    }
+
+    async function scanDevice() {
+      if (!("bluetooth" in navigator)) {
+        setStatus("Web Bluetooth не поддерживается в этом браузере.", true);
+        return;
+      }
+
+      try {
+        setStatus("Открываю окно выбора устройства...");
+
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ["battery_service"]
+        });
+
+        beep(220, 1200, 0.06);
+
+        const name = device.name || "Без имени";
+        const id = device.id || "ID недоступен";
+
+        setStatus(
+          "Устройство обнаружено.\n\n" +
+          "Имя: " + name + "\n" +
+          "ID: " + id + "\n" +
+          "Статус: цель отмечена",
+          true
+        );
+
+        device.addEventListener("gattserverdisconnected", () => {
+          setStatus(
+            "Устройство было найдено ранее, но соединение разорвано.\n\n" +
+            "Имя: " + (device.name || "Без имени"),
+            true
+          );
+        });
+
+      } catch (error) {
+        if (error.name === "NotFoundError") {
+          setStatus("Пользователь закрыл окно выбора или подходящее устройство не было выбрано.");
+        } else {
+          setStatus("Ошибка поиска устройства:\n" + error.message, true);
+        }
+      }
+    }
+
+    checkBtn.addEventListener("click", checkBluetooth);
+    scanBtn.addEventListener("click", scanDevice);
+  </script>
+</body>
+</html>
