@@ -1,219 +1,662 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Camera Radar v5</title>
 
-<meta charset="UTF-8">
-<title>AI Radar Vision v4</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+  <style>
+    :root{
+      --bg:#020504;
+      --panel:#04110d;
+      --green:#00ff9c;
+      --green-soft:rgba(0,255,156,0.14);
+      --red:#ff3d3d;
+      --yellow:#ffd54a;
+      --text:#d8ffef;
+    }
 
-<style>
+    *{box-sizing:border-box}
 
-body{
-background:black;
-color:#00ff88;
-font-family:monospace;
-text-align:center;
-}
+    body{
+      margin:0;
+      background:#000;
+      color:var(--text);
+      font-family:Consolas, monospace;
+      text-align:center;
+    }
 
-#container{
-position:relative;
-display:inline-block;
-}
+    h1{
+      color:var(--green);
+      margin:14px 0 10px;
+      text-shadow:0 0 10px rgba(0,255,156,0.3);
+    }
 
-video{
-border:2px solid #00ff88;
-}
+    .app{
+      max-width:1100px;
+      margin:0 auto;
+      padding:10px 10px 30px;
+    }
 
-canvas{
-position:absolute;
-left:0;
-top:0;
-}
+    .camera-shell{
+      position:relative;
+      display:inline-block;
+      border:2px solid var(--green);
+      box-shadow:0 0 20px rgba(0,255,156,0.2);
+      background:#000;
+      overflow:hidden;
+    }
 
-#menu{
-margin-top:20px;
-padding:20px;
-border:1px solid #00ff88;
-width:700px;
-margin:auto;
-}
+    video, canvas{
+      display:block;
+      max-width:100%;
+    }
 
-button{
-padding:10px;
-margin:5px;
-background:#002b1b;
-color:#00ff88;
-border:1px solid #00ff88;
-}
+    #video{
+      width:960px;
+      height:auto;
+      background:#000;
+    }
 
-.alert{
-color:red;
-font-size:22px;
-}
+    #overlay, #hud{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+    }
 
-</style>
+    .menu{
+      margin:18px auto 0;
+      width:min(980px, 100%);
+      border:1px solid var(--green);
+      background:linear-gradient(180deg, rgba(4,17,13,0.95), rgba(0,0,0,0.98));
+      padding:18px;
+      box-shadow:0 0 20px rgba(0,255,156,0.08);
+    }
 
+    .controls{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      justify-content:center;
+      margin-bottom:18px;
+    }
+
+    button{
+      padding:12px 18px;
+      background:#062018;
+      color:var(--green);
+      border:1px solid var(--green);
+      cursor:pointer;
+      font-family:inherit;
+      font-size:16px;
+      min-width:170px;
+    }
+
+    button:hover{
+      background:#0a2b20;
+    }
+
+    .stats{
+      display:grid;
+      grid-template-columns:repeat(4, 1fr);
+      gap:12px;
+      margin-bottom:18px;
+    }
+
+    .card{
+      border:1px solid rgba(0,255,156,0.4);
+      background:rgba(0,255,156,0.05);
+      padding:14px;
+      min-height:76px;
+    }
+
+    .label{
+      color:#9affd4;
+      font-size:14px;
+      margin-bottom:6px;
+    }
+
+    .value{
+      color:var(--green);
+      font-size:28px;
+      font-weight:bold;
+    }
+
+    .status{
+      font-size:22px;
+      color:var(--green);
+      margin:10px 0;
+    }
+
+    .status.alert{
+      color:var(--red);
+      text-shadow:0 0 10px rgba(255,61,61,0.3);
+    }
+
+    .lists{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      text-align:left;
+    }
+
+    .list{
+      border:1px solid rgba(0,255,156,0.4);
+      background:rgba(0,255,156,0.04);
+      padding:12px;
+      min-height:180px;
+    }
+
+    .list h3{
+      margin:0 0 10px;
+      color:var(--green);
+    }
+
+    .item{
+      border:1px solid rgba(0,255,156,0.2);
+      padding:8px;
+      margin-bottom:8px;
+      background:rgba(0,255,156,0.03);
+      line-height:1.4;
+      font-size:14px;
+    }
+
+    .danger{
+      border-color:rgba(255,61,61,0.45);
+      background:rgba(255,61,61,0.08);
+      color:#fff;
+    }
+
+    .hint{
+      margin-top:14px;
+      color:#b8ffe3;
+      font-size:14px;
+      opacity:0.9;
+      line-height:1.5;
+    }
+
+    @media (max-width: 800px){
+      .stats{grid-template-columns:1fr 1fr}
+      .lists{grid-template-columns:1fr}
+    }
+  </style>
 </head>
-
 <body>
-
-<h2>AI Radar Vision System</h2>
-
-<div id="container">
-
-<video id="video" width="640" height="480" autoplay></video>
-<canvas id="canvas" width="640" height="480"></canvas>
-
-</div>
-
-<div id="menu">
-
-<button onclick="toggleNight()">Night Vision</button>
-<button onclick="toggleThermal()">Thermal Mode</button>
-<button onclick="startRecording()">Start Recording</button>
-
-<h3 id="peopleCount">People detected: 0</h3>
-<h3 id="status">System Ready</h3>
-
-</div>
-
-<script>
-
-const video=document.getElementById("video")
-const canvas=document.getElementById("canvas")
-const ctx=canvas.getContext("2d")
-
-let model
-let night=false
-let thermal=false
-
-let people=0
-
-async function startCamera(){
-
-let stream=await navigator.mediaDevices.getUserMedia({video:true})
-
-video.srcObject=stream
-
-}
-
-function alarm(){
-
-let audio=new AudioContext()
-
-let osc=audio.createOscillator()
-
-osc.frequency.value=350
-
-osc.connect(audio.destination)
-
-osc.start()
-
-setTimeout(()=>osc.stop(),600)
-
-}
-
-function toggleNight(){
-
-night=!night
-
-if(night){
-video.style.filter="brightness(1.6)"
-}else{
-video.style.filter="none"
-}
-
-}
-
-function toggleThermal(){
-
-thermal=!thermal
-
-if(thermal){
-video.style.filter="hue-rotate(180deg) contrast(1.8)"
-}else{
-video.style.filter="none"
-}
-
-}
-
-async function loadModel(){
-
-model=await cocoSsd.load()
-
-detect()
-
-}
-
-async function detect(){
-
-const predictions=await model.detect(video)
-
-ctx.clearRect(0,0,640,480)
-
-people=0
-
-predictions.forEach(p=>{
-
-let x=p.bbox[0]
-let y=p.bbox[1]
-let w=p.bbox[2]
-let h=p.bbox[3]
-
-let label=p.class
-let score=Math.round(p.score*100)
-
-if(label==="person"){
-people++
-}
-
-ctx.strokeStyle="#00ff88"
-
-ctx.lineWidth=3
-
-ctx.strokeRect(x,y,w,h)
-
-ctx.fillStyle="#00ff88"
-ctx.fillText(label+" "+score+"%",x,y)
-
-})
-
-document.getElementById("peopleCount").innerText="People detected: "+people
-
-if(people>2){
-
-document.getElementById("status").innerHTML="⚠ MULTIPLE PEOPLE DETECTED"
-document.getElementById("status").className="alert"
-
-alarm()
-
-}else{
-
-document.getElementById("status").innerHTML="Area Secure"
-
-}
-
-requestAnimationFrame(detect)
-
-}
-
-function startRecording(){
-
-let recorder=new MediaRecorder(video.srcObject)
-
-recorder.start()
-
-setTimeout(()=>recorder.stop(),10000)
-
-}
-
-startCamera()
-
-loadModel()
-
-</script>
-
+  <div class="app">
+    <h1>AI CAMERA RADAR V5</h1>
+
+    <div class="camera-shell" id="cameraShell">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <canvas id="hud"></canvas>
+    </div>
+
+    <div class="menu">
+      <div class="controls">
+        <button id="startBtn">Запустить камеру</button>
+        <button id="detectBtn">Включить AI-распознавание</button>
+        <button id="nightBtn">Night Vision</button>
+        <button id="thermalBtn">Thermal Mode</button>
+        <button id="recordBtn">Start Recording</button>
+        <button id="clearBtn">Сбросить тревогу</button>
+      </div>
+
+      <div class="stats">
+        <div class="card">
+          <div class="label">People detected</div>
+          <div class="value" id="peopleCount">0</div>
+        </div>
+        <div class="card">
+          <div class="label">Objects detected</div>
+          <div class="value" id="objectCount">0</div>
+        </div>
+        <div class="card">
+          <div class="label">Motion level</div>
+          <div class="value" id="motionLevel">0%</div>
+        </div>
+        <div class="card">
+          <div class="label">AI status</div>
+          <div class="value" id="aiState" style="font-size:18px;">IDLE</div>
+        </div>
+      </div>
+
+      <div class="status" id="statusText">Система готова</div>
+
+      <div class="lists">
+        <div class="list">
+          <h3>Обнаруженные объекты</h3>
+          <div id="objectList"></div>
+        </div>
+        <div class="list">
+          <h3>События системы</h3>
+          <div id="eventList"></div>
+        </div>
+      </div>
+
+      <div class="hint">
+        Лучше тестировать в Chrome. Сначала нажми «Запустить камеру», потом «Включить AI-распознавание».
+        Если интернет медленный, модель может грузиться 10-30 секунд.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const hud = document.getElementById("hud");
+    const ctx = overlay.getContext("2d");
+    const hudCtx = hud.getContext("2d");
+
+    const peopleCountEl = document.getElementById("peopleCount");
+    const objectCountEl = document.getElementById("objectCount");
+    const motionLevelEl = document.getElementById("motionLevel");
+    const aiStateEl = document.getElementById("aiState");
+    const statusTextEl = document.getElementById("statusText");
+    const objectListEl = document.getElementById("objectList");
+    const eventListEl = document.getElementById("eventList");
+
+    const startBtn = document.getElementById("startBtn");
+    const detectBtn = document.getElementById("detectBtn");
+    const nightBtn = document.getElementById("nightBtn");
+    const thermalBtn = document.getElementById("thermalBtn");
+    const recordBtn = document.getElementById("recordBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    let model = null;
+    let stream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let detectionRunning = false;
+    let nightMode = false;
+    let thermalMode = false;
+    let alertActive = false;
+    let lastMotionFrame = null;
+    let rafId = null;
+    let hudAngle = 0;
+
+    const trackedObjects = new Map();
+    const systemEvents = [];
+
+    function logEvent(text, danger = false) {
+      const time = new Date().toLocaleTimeString();
+      systemEvents.unshift({ text, time, danger });
+      if (systemEvents.length > 12) systemEvents.pop();
+      renderEvents();
+    }
+
+    function renderEvents() {
+      eventListEl.innerHTML = systemEvents.length
+        ? systemEvents.map(e => `
+          <div class="item ${e.danger ? "danger" : ""}">
+            <strong>[${e.time}]</strong><br>${e.text}
+          </div>
+        `).join("")
+        : '<div class="item">Событий пока нет</div>';
+    }
+
+    function renderObjects(list) {
+      objectListEl.innerHTML = list.length
+        ? list.map(obj => `
+          <div class="item ${obj.danger ? "danger" : ""}">
+            <strong>${obj.label}</strong><br>
+            confidence: ${obj.score}%<br>
+            status: ${obj.danger ? "alert object" : "tracked"}
+          </div>
+        `).join("")
+        : '<div class="item">Пока ничего не найдено</div>';
+    }
+
+    function setStatus(text, alert = false) {
+      statusTextEl.textContent = text;
+      statusTextEl.className = alert ? "status alert" : "status";
+    }
+
+    function beep(freq = 900, duration = 150, volume = 0.03, type = "sine") {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+
+        osc.type = type;
+        osc.frequency.value = freq;
+        gain.gain.value = volume;
+
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start();
+
+        setTimeout(() => {
+          osc.stop();
+          ac.close();
+        }, duration);
+      } catch (e) {}
+    }
+
+    function strongAlarm() {
+      beep(420, 220, 0.05, "square");
+      setTimeout(() => beep(520, 220, 0.05, "square"), 230);
+      setTimeout(() => beep(620, 220, 0.05, "square"), 460);
+    }
+
+    async function startCamera() {
+      try {
+        setStatus("Запуск камеры...");
+        aiStateEl.textContent = "CAMERA";
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true
+        });
+
+        video.srcObject = stream;
+
+        await new Promise((resolve) => {
+          video.onloadedmetadata = () => resolve();
+        });
+
+        await video.play();
+
+        const w = video.videoWidth || 960;
+        const h = video.videoHeight || 540;
+
+        overlay.width = w;
+        overlay.height = h;
+        hud.width = w;
+        hud.height = h;
+
+        overlay.style.width = video.clientWidth + "px";
+        overlay.style.height = video.clientHeight + "px";
+        hud.style.width = video.clientWidth + "px";
+        hud.style.height = video.clientHeight + "px";
+
+        setStatus("Камера запущена");
+        aiStateEl.textContent = "READY";
+        logEvent("Камера подключена");
+        drawHud();
+      } catch (err) {
+        setStatus("Ошибка камеры", true);
+        aiStateEl.textContent = "ERROR";
+        logEvent("Не удалось включить камеру: " + err.message, true);
+      }
+    }
+
+    async function loadModelAndDetect() {
+      if (!stream) {
+        setStatus("Сначала запусти камеру", true);
+        logEvent("Попытка старта AI без камеры", true);
+        return;
+      }
+
+      try {
+        aiStateEl.textContent = "LOADING";
+        setStatus("Загрузка AI-модели...");
+        logEvent("Началась загрузка AI-модели");
+
+        await tf.setBackend("webgl");
+        await tf.ready();
+
+        model = await cocoSsd.load({ base: "mobilenet_v2" });
+
+        aiStateEl.textContent = "ACTIVE";
+        setStatus("AI-распознавание активно");
+        logEvent("AI-модель загружена");
+
+        if (!detectionRunning) {
+          detectionRunning = true;
+          detectLoop();
+        }
+      } catch (err) {
+        aiStateEl.textContent = "ERROR";
+        setStatus("Ошибка AI-модели", true);
+        logEvent("Ошибка загрузки модели: " + err.message, true);
+      }
+    }
+
+    function getDangerFlag(label) {
+      const alertObjects = ["knife", "scissors", "baseball bat"];
+      return alertObjects.includes(label);
+    }
+
+    function computeMotion() {
+      if (!video.videoWidth || !video.videoHeight) return 0;
+
+      const temp = document.createElement("canvas");
+      temp.width = 160;
+      temp.height = 120;
+      const tctx = temp.getContext("2d");
+      tctx.drawImage(video, 0, 0, temp.width, temp.height);
+
+      const current = tctx.getImageData(0, 0, temp.width, temp.height).data;
+
+      if (!lastMotionFrame) {
+        lastMotionFrame = current;
+        return 0;
+      }
+
+      let diff = 0;
+      for (let i = 0; i < current.length; i += 4) {
+        diff += Math.abs(current[i] - lastMotionFrame[i]);
+        diff += Math.abs(current[i + 1] - lastMotionFrame[i + 1]);
+        diff += Math.abs(current[i + 2] - lastMotionFrame[i + 2]);
+      }
+
+      lastMotionFrame = current;
+      const max = temp.width * temp.height * 3 * 255;
+      return Math.min(100, Math.round((diff / max) * 100 * 6));
+    }
+
+    function drawHud() {
+      hudCtx.clearRect(0, 0, hud.width, hud.height);
+
+      const w = hud.width;
+      const h = hud.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const radarR = Math.min(w, h) * 0.18;
+
+      hudCtx.strokeStyle = alertActive ? "rgba(255,61,61,0.45)" : "rgba(0,255,156,0.35)";
+      hudCtx.lineWidth = 1;
+
+      for (let i = 0; i < 3; i++) {
+        hudCtx.beginPath();
+        hudCtx.arc(cx, cy, radarR - i * 22, 0, Math.PI * 2);
+        hudCtx.stroke();
+      }
+
+      hudCtx.beginPath();
+      hudCtx.moveTo(cx - radarR, cy);
+      hudCtx.lineTo(cx + radarR, cy);
+      hudCtx.moveTo(cx, cy - radarR);
+      hudCtx.lineTo(cx, cy + radarR);
+      hudCtx.stroke();
+
+      const sx = cx + Math.cos(hudAngle) * radarR;
+      const sy = cy + Math.sin(hudAngle) * radarR;
+      hudCtx.strokeStyle = alertActive ? "rgba(255,61,61,0.8)" : "rgba(0,255,156,0.8)";
+      hudCtx.lineWidth = 2;
+      hudCtx.beginPath();
+      hudCtx.moveTo(cx, cy);
+      hudCtx.lineTo(sx, sy);
+      hudCtx.stroke();
+
+      hudCtx.strokeStyle = alertActive ? "rgba(255,61,61,0.25)" : "rgba(0,255,156,0.18)";
+      for (let x = 40; x < w; x += 80) {
+        hudCtx.beginPath();
+        hudCtx.moveTo(x, 0);
+        hudCtx.lineTo(x, h);
+        hudCtx.stroke();
+      }
+      for (let y = 40; y < h; y += 80) {
+        hudCtx.beginPath();
+        hudCtx.moveTo(0, y);
+        hudCtx.lineTo(w, y);
+        hudCtx.stroke();
+      }
+
+      hudCtx.fillStyle = alertActive ? "#ff3d3d" : "#00ff9c";
+      hudCtx.font = "16px Consolas";
+      hudCtx.fillText("HUD ACTIVE", 20, 28);
+
+      hudAngle += 0.03;
+      requestAnimationFrame(drawHud);
+    }
+
+    async function detectLoop() {
+      if (!detectionRunning || !model) return;
+
+      const predictions = await model.detect(video, 20);
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      let people = 0;
+      let dangerCount = 0;
+
+      const filtered = predictions
+        .filter(p => p.score >= 0.5)
+        .map(p => {
+          const score = Math.round(p.score * 100);
+          const label = p.class;
+          const danger = getDangerFlag(label);
+          return { ...p, scorePercent: score, danger };
+        });
+
+      filtered.forEach((p) => {
+        const [x, y, w, h] = p.bbox;
+        if (p.class === "person") people++;
+        if (p.danger) dangerCount++;
+
+        ctx.strokeStyle = p.danger ? "#ff3d3d" : "#00ff9c";
+        ctx.lineWidth = p.danger ? 4 : 3;
+        ctx.strokeRect(x, y, w, h);
+
+        ctx.fillStyle = p.danger ? "rgba(255,61,61,0.16)" : "rgba(0,255,156,0.10)";
+        ctx.fillRect(x, y, w, h);
+
+        ctx.fillStyle = p.danger ? "#ff3d3d" : "#00ff9c";
+        ctx.font = "18px Consolas";
+        ctx.fillText(`${p.class} ${p.scorePercent}%`, x + 6, Math.max(20, y - 8));
+
+        if (p.class === "person") {
+          const risk = dangerCount > 0 ? Math.min(95, 55 + dangerCount * 15) : 5;
+          ctx.fillText(`risk ${risk}%`, x + 6, y + h + 22);
+        }
+      });
+
+      const motion = computeMotion();
+      motionLevelEl.textContent = `${motion}%`;
+      peopleCountEl.textContent = people;
+      objectCountEl.textContent = filtered.length;
+
+      alertActive = dangerCount > 0 || motion >= 18;
+
+      if (dangerCount > 0) {
+        setStatus("ТРЕВОГА: обнаружен опасный объект", true);
+      } else if (people > 0) {
+        setStatus(`Обнаружено людей: ${people}`);
+      } else if (filtered.length > 0) {
+        setStatus("Объекты обнаружены");
+      } else {
+        setStatus("Наблюдение активно");
+      }
+
+      renderObjects(filtered.map(p => ({
+        label: p.class,
+        score: p.scorePercent,
+        danger: p.danger
+      })));
+
+      if (dangerCount > 0) {
+        strongAlarm();
+        if (mediaRecorder && mediaRecorder.state === "inactive") {
+          mediaRecorder.start();
+          logEvent("Автозапись начата из-за тревоги", true);
+          setTimeout(() => {
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+              mediaRecorder.stop();
+            }
+          }, 8000);
+        }
+      } else if (motion >= 18) {
+        beep(780, 120, 0.025, "triangle");
+      }
+
+      rafId = requestAnimationFrame(detectLoop);
+    }
+
+    function applyVideoFilter() {
+      if (thermalMode) {
+        video.style.filter = "contrast(1.6) saturate(2) hue-rotate(180deg)";
+      } else if (nightMode) {
+        video.style.filter = "brightness(1.45) contrast(1.25) saturate(0.8)";
+      } else {
+        video.style.filter = "none";
+      }
+    }
+
+    function toggleNight() {
+      nightMode = !nightMode;
+      if (nightMode) thermalMode = false;
+      applyVideoFilter();
+      logEvent("Night Vision: " + (nightMode ? "ON" : "OFF"));
+    }
+
+    function toggleThermal() {
+      thermalMode = !thermalMode;
+      if (thermalMode) nightMode = false;
+      applyVideoFilter();
+      logEvent("Thermal Mode: " + (thermalMode ? "ON" : "OFF"));
+    }
+
+    function startRecording() {
+      if (!stream) {
+        logEvent("Запись невозможна без камеры", true);
+        return;
+      }
+
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "alert-recording.webm";
+        a.click();
+        URL.revokeObjectURL(url);
+        logEvent("Видео сохранено");
+      };
+
+      mediaRecorder.start();
+      logEvent("Ручная запись запущена");
+      setTimeout(() => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+        }
+      }, 10000);
+    }
+
+    function clearAlert() {
+      alertActive = false;
+      setStatus("Тревога сброшена");
+      logEvent("Тревога сброшена вручную");
+    }
+
+    startBtn.addEventListener("click", startCamera);
+    detectBtn.addEventListener("click", loadModelAndDetect);
+    nightBtn.addEventListener("click", toggleNight);
+    thermalBtn.addEventListener("click", toggleThermal);
+    recordBtn.addEventListener("click", startRecording);
+    clearBtn.addEventListener("click", clearAlert);
+
+    renderEvents();
+    renderObjects([]);
+  </script>
 </body>
 </html>
